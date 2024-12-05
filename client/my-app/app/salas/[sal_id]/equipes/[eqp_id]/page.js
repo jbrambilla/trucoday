@@ -1,84 +1,44 @@
 'use client'
-import { useState, useEffect, useRef, use } from "react";
-import { io } from 'socket.io-client';
-import { redirect, useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from "react";
+import { useParams, useRouter } from 'next/navigation';
+import { getSocket } from "@/app/libs/socket";
+import useSocketEvent from '@/app/hooks/useSocketEvent';
 
 
 export default function Sala() {
     const params = useParams(); 
     const { sal_id, eqp_id } = params; 
     const URL = 'http://localhost:5000';
-    const URLFront = 'http://localhost:3000';
     const router = useRouter();
-
-    const [eventos, setEventos] = useState([]);
-    let socket = useRef(null);
-
     const [nomeJogador, setNomeJogador] = useState(''); 
     const [idJogador, setIdJogador] = useState(''); 
-    const [nomeOutrosJogadores, setOutrosJogadores] = useState([]);
+    const [eventos, setEventos] = useState([]);
+    const [jogadores, setJogadores] = useState([]);
 
-    // const [jogador, setJogador] = useState({}); 
-
-    let idUsuario = '';
-    const [jogadorAdicionado, setJogadorAdicionado] = useState(false);  
-
-    function entrou(params) {
-        const token = getCookie('token'); 
-
-        fetch(URL + '/salas/adicionar', {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`, 
-            },
-            body: JSON.stringify({nome: nomeJogador, salaId: sal_id, idUsuario: idJogador, eqp_id: eqp_id})
-        })
-        .then(r=> {
-            return r.json();
-        })
-        .then(r=> {
-            if(!r.ok){
-                console.error('Erro:', r.msg);
-                alert(r.msg);
-                router.push('/salas'); 
-            }
-            return r;
-        })
-        .then(r=> {            
-
-            socket.current.emit("mensagem", 
-                {
-                    mensagem:`O jogador ${nomeJogador} entrou na sala`,
-                    codSala: sal_id
-                });
-
-        })
-        .catch(error => {
-            console.error('Erro:', error);
-            alert('teste');
-            router.push('/salas'); 
-        });
-    }
-
+    const posicoesEquipe1 = [
+        { top: '10%', left: '50%' },
+        { bottom: '10%', left: '50%' },
+    ];
     
-    function buscarOutrosJogadores(params) {
-        const token = getCookie('token'); 
+    const posicoesEquipe2 = [
+        { top: '50%', left: '0%' },
+        { top: '50%', right: '0%' },
+    ];
 
-        fetch(URL + `/participantes/outros_por_sala/${sal_id}/${idJogador}`, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`, 
-            }
-        })
-        .then(r=> {
-            return r.json();
-        })
-        .then(r=> {            
-            setOutrosJogadores(r);
-        })
-    }
+    useSocketEvent('setup', (command) => {
+        console.log('Recebendo o evento setup');
+        setJogadores(Object.values(command.jogadores));
+    });
+
+    useSocketEvent('add-player', (command) => {
+        console.log('Recebendo o evento add-player');
+        setJogadores((prev) => [...prev, command.jogador]);
+    });
+
+    useSocketEvent('player-disconnected', (command) => {
+        console.log('Recebendo o evento player-disconnected');
+        setJogadores((prev) => prev.filter((jogador) => jogador.id !== command.jogador.id));
+    });
 
     function getCookie(name) {
         const value = `; ${document.cookie}`;
@@ -86,41 +46,6 @@ export default function Sala() {
         if (parts.length === 2) return parts.pop().split(';').shift();
     }
     
-
-
-    function sairDoJogo() {
-        socket.current.disconnect();
-        alert('Você saiu do jogo.');
-        router.push('/salas');   
-    }
-
-    useEffect(() => {
-        if (nomeJogador !== '') {
-            entrou(); 
-
-            buscarOutrosJogadores();
-
-            socket.current = io(URL, { query: `codSala=${sal_id}&idUsuario=${idJogador}&nome=${nomeJogador}` });
-
-            socket.current.on("connect", () => {
-                console.log("Conectado ao servidor WebSocket");
-            });
-    
-            socket.current.on("teste", () => {
-                alert(`${nomeJogador} apertou o botão`)
-            });
-
-            socket.current.on("mensagem", (mensagem) => {
-                setEventos(eventos => [...eventos, mensagem.mensagem]);
-            });
-    
-    
-            return () => {
-                socket.current.disconnect();
-            };
-        }
-    }, [nomeJogador,idJogador]); 
-
     useEffect(() => {
         const token = getCookie('token');
 
@@ -139,35 +64,33 @@ export default function Sala() {
         })
         .then(data => {
             if (data.nome) {
+                const socket = getSocket();
+                socket.emit('add-player',{id: data.id, nome: data.nome, sal_id: sal_id, eqp_id: eqp_id});
                 setNomeJogador(data.nome);
                 setIdJogador(data.id);
-                setJogadorAdicionado(true);
             }
         })
         .catch(error => {
             console.error('Erro:', error);
         });
-
-
-
-
-    }, [sal_id, URL]);
+    }, [sal_id, eqp_id, URL]);
    
     return (
         <div style={styles.jogoContainer}>
             <div style={styles.mesaJogo}>
-                <div style={{ ...styles.jogador, top: '10%', left: '50%' }}>
-                    <h3></h3>
-                </div> 
-                 <div style={{ ...styles.jogador, top: '50%', left: '0%' }}>
-                    <h3></h3>
-                </div>
-                <div style={{ ...styles.jogador, top: '50%', right: '0%' }}>
-                    <h3></h3>
-                </div>
-                <div style={{ ...styles.jogador, bottom: '10%', left: '50%' }}>
-                    <h3>{nomeJogador}</h3>
-                </div>
+
+                {/* POSICIONANDO EQUIPE 1*/}
+                {jogadores.filter((jogador) => jogador.eqp_id != 2).map((jogador, index) => (
+                    <div key={index} style={{ ...styles.jogadorEquipe1, ...posicoesEquipe1[index] }}>
+                        <h3>{jogador.nome} {jogador.id == idJogador ? ' (Você)' : ''}</h3>
+                    </div> 
+                ))}
+                {/* POSICIONANDO EQUIPE 2*/}
+                {jogadores.filter((jogador) => jogador.eqp_id != 1).map((jogador, index) => (
+                    <div key={index} style={{ ...styles.jogadorEquipe2, ...posicoesEquipe2[index] }}>
+                        <h3>{jogador.nome} {jogador.id == idJogador ? ' (Você)' : ''}</h3>
+                    </div> 
+                ))}
                 <div style={styles.mesa}>
                     <h2>Mesa de Truco</h2>
                 </div>
@@ -177,8 +100,8 @@ export default function Sala() {
                     <h2 style={styles.menuLateralTitle}>Jogadores na Sala</h2>
                 </div>
                 <br />
-                {eventos.map((evento, index) => (
-                    <p key={index}>{evento}</p>
+                {jogadores.map((jogador, index) => (
+                    <p key={index}>{jogador.nome}</p>
                 ))}
                 <br />
 
@@ -187,7 +110,7 @@ export default function Sala() {
                     <button style={styles.buttonTruco} onClick={() => socket.current.emit("teste", { codSala: sal_id })}>Pedir truco</button>
                 </div>
             </div>
-            <button style={styles.buttonSair} className="button-sair" onClick={sairDoJogo}>Sair do Jogo</button>
+            <button style={styles.buttonSair} className="button-sair" onClick={() => router.push('/') }>Sair do Jogo</button>
         </div>
     );
 
@@ -218,9 +141,18 @@ const styles = {
         alignItems: 'center',
     },
 
-    jogador: {
+    jogadorEquipe1: {
         position: 'absolute',
         backgroundColor: '#FF0000', /* Cor dos jogadores */
+        padding: '10px',
+        borderRadius: '5px',
+        textAlign: 'center',
+        margin: '5px 10px 5px 10px',
+    },
+
+    jogadorEquipe2: {
+        position: 'absolute',
+        backgroundColor: 'blue', /* Cor dos jogadores */
         padding: '10px',
         borderRadius: '5px',
         textAlign: 'center',

@@ -22,7 +22,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const server = http.createServer(app);
 
-const io = new Server(server, {
+const socketList = new Server(server, {
   cors: {
       origin: "http://localhost:3000",
       methods: ["GET", "POST"],
@@ -30,58 +30,6 @@ const io = new Server(server, {
       credentials: true
   }
 });
-
-const estadoJogo = {
-  pontuacao: [0, 0],
-  jogadas: [],
-};
-
-const jogadores = {}; 
-
-socketInit(io);
-
-// io.on('connection', (socket) => {
-//   const idUsuario = socket.handshake.query.idUsuario;
-//   const codSala = socket.handshake.query.codSala;
-//   const nome = socket.handshake.query.nome;
-
-//   if (!idUsuario || !codSala || !nome) {
-//     console.error("Server: Parâmetros de conexão faltando:", { idUsuario, codSala, nome });
-//   }
-
-//   socket.emit('estadoJogo', estadoJogo);
-
-//   socket.on('registrarJogador', (nome) => {
-//       jogadores[socket.id] = nome;
-//       io.emit('atualizarJogadores', Object.values(jogadores));
-//   });
-
-//   socket.on('jogada', (dados) => {
-//       if (!jogadores[socket.id]) {
-//           socket.emit('erro', 'Você precisa estar registrado para jogar.');
-//           return;
-//       }
-
-//       estadoJogo.jogadas.push({ jogador: jogadores[socket.id], acao: dados.acao });
-
-//       if (dados.acao === "Pedir Truco") {
-//           estadoJogo.pontuacao[0] += 1; 
-//       }
-
-//       io.emit('jogada', {
-//           jogada: { jogador: jogadores[socket.id], acao: dados.acao },
-//           pontuacao: estadoJogo.pontuacao
-//       });
-//   });
-
-//   socket.on('disconnect', () => {
-//     delete jogadores[socket.id];
-    
-//     io.emit('atualizarJogadores', Object.values(jogadores));
-
-//     socket.emit('sair', { mensagem: "Você saiu da sala. Redirecionando para salas disponíveis..." });
-//   });
-// });
 
 app.use(cors({origin: 'http://localhost:3000', credentials: true}));
 app.use(cookieParser());
@@ -98,7 +46,10 @@ app.use('/mao', maoRoutes);
 app.use('/rodada', rodadaRoutes);
 app.use('/carta', cartaRoutes);
 
+socketInit(socketList);
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`BackEnd - Servidor web e WebSocket rodando na porta ${PORT}!`);
 });
+
